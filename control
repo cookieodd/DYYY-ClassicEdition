@@ -1,0 +1,12 @@
+Package: com.huami.dyyy
+Name: DYYY
+Version: 2.2-9
+Description: 仅供学习交流，请在 24 小时内自觉删除。
+Homepage: https://github.com/cookieodd/DYYY-ClassicEdition
+Section: Tweaks
+Depends: firmware (>= 5.0), mobilesubstrate
+Priority: optional
+Maintainer: cookieodd
+Author: cookieodd
+Architecture: iphoneos-arm
+Icon: https://Mieing.Github.io/repo/file/TikTok.png
