@@ -28,6 +28,9 @@ static CGFloat gStartVal = 0.0;
 static DYEdgeMode gMode = DYEdgeModeNone;
 static __weak UICollectionView *gFeedCV = nil;
 
+// 进度条位置
+static CGFloat gProgressContainerY = 0.0;
+
 static const CGFloat kInvalidAlpha = -1.0;
 static const CGFloat kInvalidHeight = -1.0;
 static CGFloat gGlobalTransparency = kInvalidAlpha;
@@ -938,6 +941,9 @@ static BOOL DYYYShouldHandleSpeedFeatures(void) {
 %hook AWEPlayInteractionProgressContainerView
 - (void)layoutSubviews {
     %orig;
+    
+    // 保存位置
+    gProgressContainerY = self.frame.origin.y;
 
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYEnableFullScreen"]) {
         return;
@@ -993,14 +999,24 @@ static char kLeftLabelKey;
 static char kRightLabelKey;
 
 // 布局常量
-static const CGFloat kLeftInset = 8.0;
-static const CGFloat kRightLabelX = 352.0;
 static const CGFloat kLabelWidth = 28.0;
 static const CGFloat kLabelH = 12.0;
-static const CGFloat kSliderX = 39.0;
-static const CGFloat kSliderWidth = 310.0;  // 进度条宽度
 static const CGFloat kSliderYOffset = 2.0;
 static const CGFloat kLabelYOffset = -5.0;  // 标签偏移
+
+// 动态布局
+static inline CGFloat DYYYGetSliderX(UIView *parent) {
+    return parent ? parent.bounds.size.width * 0.1 : 39.0;
+}
+static inline CGFloat DYYYGetSliderWidth(UIView *parent) {
+    return parent ? parent.bounds.size.width * 0.795 : 310.0;
+}
+static inline CGFloat DYYYGetRightLabelX(UIView *parent) {
+    return DYYYGetSliderX(parent) + DYYYGetSliderWidth(parent) + 3.0;
+}
+static inline CGFloat DYYYGetLeftInset(UIView *parent) {
+    return parent ? parent.bounds.size.width * 0.02 : 8.0;
+}
 
 // 时间格式化
 static NSString *dyyy_formatTime(CGFloat seconds) {
@@ -1044,20 +1060,24 @@ static void DYYYLayoutLabels(AWEFeedProgressSlider *slider) {
     UILabel *right = objc_getAssociatedObject(slider, &kRightLabelKey);
     if (!left && !right) return;
     
+    UIView *parent = slider.superview;
     CGFloat sliderY = slider.frame.origin.y;
     CGFloat labelY = sliderY + kLabelYOffset;
     
-    if (left) left.frame = CGRectMake(kLeftInset, labelY, kLabelWidth, kLabelH);
-    if (right) right.frame = CGRectMake(kRightLabelX, labelY, kLabelWidth, kLabelH);
+    if (left) left.frame = CGRectMake(DYYYGetLeftInset(parent), labelY, kLabelWidth, kLabelH);
+    if (right) right.frame = CGRectMake(DYYYGetRightLabelX(parent), labelY, kLabelWidth, kLabelH);
 }
 
 static void DYYYAdjustSliderFrame(AWEFeedProgressSlider *slider) {
     if (!DYYYGetBool(@"DYYYShowScheduleDisplay")) return;
     if (!slider.superview) return;
+    UIView *parent = slider.superview;
+    CGFloat sliderX = DYYYGetSliderX(parent);
+    CGFloat sliderW = DYYYGetSliderWidth(parent);
     CGRect f = slider.frame;
-    if (fabs(f.origin.x - kSliderX) > 0.5 || fabs(f.size.width - kSliderWidth) > 0.5) {
-        f.origin.x = kSliderX;
-        f.size.width = kSliderWidth;
+    if (fabs(f.origin.x - sliderX) > 0.5 || fabs(f.size.width - sliderW) > 0.5) {
+        f.origin.x = sliderX;
+        f.size.width = sliderW;
         slider.frame = f;
     }
 }
@@ -1137,8 +1157,9 @@ static void dyyy_updateLabels(AWEPlayInteractionProgressController *ctrl, double
 - (void)setFrame:(CGRect)frame {
     if (DYYYGetBool(@"DYYYShowScheduleDisplay")) {
         if (self.superview) {
-            frame.origin.x = kSliderX;
-            frame.size.width = kSliderWidth;
+            UIView *parent = self.superview;
+            frame.origin.x = DYYYGetSliderX(parent);
+            frame.size.width = DYYYGetSliderWidth(parent);
             frame.origin.y -= kSliderYOffset;
         }
     }
@@ -1172,8 +1193,9 @@ static void dyyy_updateLabels(AWEPlayInteractionProgressController *ctrl, double
 
 - (void)setFrame:(CGRect)frame {
     if (DYYYGetBool(@"DYYYShowScheduleDisplay")) {
-        frame.origin.x = kSliderX;
-        frame.size.width = kSliderWidth;
+        UIView *parent = self.superview;
+        frame.origin.x = DYYYGetSliderX(parent);
+        frame.size.width = DYYYGetSliderWidth(parent);
     }
     %orig(frame);
 }
@@ -1181,10 +1203,13 @@ static void dyyy_updateLabels(AWEPlayInteractionProgressController *ctrl, double
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYShowScheduleDisplay")) {
+        UIView *parent = self.superview;
+        CGFloat sliderX = DYYYGetSliderX(parent);
+        CGFloat sliderW = DYYYGetSliderWidth(parent);
         CGRect f = self.frame;
-        if (fabs(f.origin.x - kSliderX) > 0.5 || fabs(f.size.width - kSliderWidth) > 0.5) {
-            f.origin.x = kSliderX;
-            f.size.width = kSliderWidth;
+        if (fabs(f.origin.x - sliderX) > 0.5 || fabs(f.size.width - sliderW) > 0.5) {
+            f.origin.x = sliderX;
+            f.size.width = sliderW;
             self.frame = f;
         }
     }
@@ -6971,15 +6996,36 @@ static Class TagViewClass = nil;
             if (scaleValue.length > 0) {
                 CGFloat scale = [scaleValue floatValue];
                 if (scale > 0 && scale != 1.0) {
-                    NSArray *subviews = [self.subviews copy];
-                    CGFloat ty = 0;
-                    for (UIView *view in subviews) {
-                        CGFloat viewHeight = view.frame.size.height;
-                        ty += (viewHeight - viewHeight * scale) / 2;
-                    }
-                    CGFloat frameWidth = self.frame.size.width;
-                    CGFloat right_tx = (frameWidth - frameWidth * scale) / 2;
-                    self.transform = CGAffineTransformMake(scale, 0, 0, scale, right_tx, ty);
+                    CGFloat boundsWidth = self.bounds.size.width;
+                    CGFloat boundsHeight = self.bounds.size.height;
+                    CGFloat scaledHeight = boundsHeight * scale;
+                    CGFloat scaledWidth = boundsWidth * scale;
+                    
+                    // 固定边距
+                    CGFloat bottomMargin = 5.0;
+                    CGFloat rightMargin = 4.0;
+                    
+                    // 屏幕宽度
+                    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+                    
+                    // 时间标签Y
+                    CGFloat timeLabelY = gProgressContainerY + 190.0;
+                    
+                    // 目标位置
+                    CGFloat targetBottomY = timeLabelY - bottomMargin;
+                    CGFloat targetTopY = targetBottomY - scaledHeight;
+                    CGFloat targetRightX = screenWidth - rightMargin;
+                    CGFloat targetLeftX = targetRightX - scaledWidth;
+                    
+                    // 目标中心点
+                    CGFloat targetCenterX = targetLeftX + scaledWidth / 2;
+                    CGFloat targetCenterY = targetTopY + scaledHeight / 2;
+                    
+                    // 平移量
+                    CGFloat tx = targetCenterX - self.center.x;
+                    CGFloat ty = targetCenterY - self.center.y;
+                    
+                    self.transform = CGAffineTransformMake(scale, 0, 0, scale, tx, ty);
                 } else {
                     self.transform = CGAffineTransformIdentity;
                 }
